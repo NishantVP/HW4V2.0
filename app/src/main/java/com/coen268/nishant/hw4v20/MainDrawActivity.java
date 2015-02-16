@@ -1,7 +1,19 @@
 package com.coen268.nishant.hw4v20;
 
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.TaskStackBuilder;
+import android.content.Context;
+import android.content.Intent;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorListener;
+import android.hardware.SensorManager;
+import android.support.v4.app.NotificationCompat;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -22,11 +34,24 @@ public class MainDrawActivity extends ActionBarActivity implements OnClickListen
     private ImageButton currPaint, drawBtn, eraseBtn,newBtn,saveBtn;
     private float smallBrush, mediumBrush, largeBrush;
 
+    private SensorManager mSensorManager;
+    private float mAccel; // acceleration apart from gravity
+    private float mAccelCurrent; // current acceleration including gravity
+    private float mAccelLast; // last acceleration including gravity
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_draw);
+
+        // For Shake Detection //
+        mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        mSensorManager.registerListener(mSensorListener, mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL);
+        mAccel = 0.00f;
+        mAccelCurrent = SensorManager.GRAVITY_EARTH;
+        mAccelLast = SensorManager.GRAVITY_EARTH;
+        // For Shake Detection //
 
         drawView = (DrawingView)findViewById(R.id.drawing);
         LinearLayout paintLayout = (LinearLayout)findViewById(R.id.paint_colors);
@@ -50,8 +75,55 @@ public class MainDrawActivity extends ActionBarActivity implements OnClickListen
         saveBtn = (ImageButton)findViewById(R.id.save_btn);
         saveBtn.setOnClickListener(this);
 
-
     }
+
+
+
+    private final SensorEventListener mSensorListener = new SensorEventListener() {
+
+        public void onSensorChanged(SensorEvent se) {
+            float x = se.values[0];
+            float y = se.values[1];
+            float z = se.values[2];
+            mAccelLast = mAccelCurrent;
+            mAccelCurrent = (float) Math.sqrt((double) (x*x + y*y + z*z));
+            float delta = mAccelCurrent - mAccelLast;
+            mAccel = mAccel * 0.9f + delta; // perform low-cut filter
+
+            Intent intent = new Intent(MainDrawActivity.this,
+                    MyIntentService.class);
+            if (mAccel > 12) {
+                Toast toast = Toast.makeText(getApplicationContext(), "Device has shaken.", Toast.LENGTH_LONG);
+                toast.show();
+                drawView.startNew();
+                startService(intent);
+
+                /*
+                AlertDialog.Builder newDialog = new AlertDialog.Builder(MainDrawActivity.this);
+
+                n8ewDialog.setTitle("Erase Everything ?");
+                newDialog.setMessage("Start new drawing (you will lose the current drawing)?");
+                newDialog.setPositiveButton("Yes", new DialogInterface.OnClickListener(){
+                    public void onClick(DialogInterface dialog, int which){
+                        drawView.startNew();
+                        dialog.dismiss();
+                    }
+                });
+                newDialog.setNegativeButton("Cancel", new DialogInterface.OnClickListener(){
+                    public void onClick(DialogInterface dialog, int which){
+                        dialog.cancel();
+                    }
+                });
+                newDialog.show();
+                */
+            }
+
+        }
+
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+    };
+
 
     @Override
     public void onClick(View view){
@@ -108,6 +180,7 @@ public class MainDrawActivity extends ActionBarActivity implements OnClickListen
                     drawView.setErase(true);
                     drawView.setBrushSize(smallBrush);
                     brushDialog.dismiss();
+
                 }
             });
             ImageButton mediumBtn = (ImageButton)brushDialog.findViewById(R.id.medium_brush);
@@ -201,6 +274,18 @@ public class MainDrawActivity extends ActionBarActivity implements OnClickListen
             currPaint=(ImageButton)view;
         }
 
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        mSensorManager.registerListener(mSensorListener, mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL);
+    }
+
+    @Override
+    protected void onPause() {
+        mSensorManager.unregisterListener(mSensorListener);
+        super.onPause();
     }
 
     @Override
